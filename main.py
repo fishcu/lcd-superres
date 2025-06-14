@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 
 import sys
+import numpy as np
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, 
                             QWidget, QLabel, QSpinBox, QFrame, QPushButton)
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QImage
 from PIL import Image
 from image_viewer import HighPerformanceImageView
 from rectification_window import RectificationWindow
+from super_resolution_window import SuperResolutionWindow
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -18,8 +21,9 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central_widget)
         layout = QVBoxLayout(central_widget)
         
-        # Initialize rectification window
+        # Initialize windows
         self.rectification_window = None
+        self.super_resolution_window = None
         
         # Add repetition controls
         controls_frame = QFrame()
@@ -48,12 +52,18 @@ class MainWindow(QMainWindow):
         self.rectify_button.setToolTip("Open secondary window for quadrilateral rectification")
         self.rectify_button.clicked.connect(self.open_rectification_window)
         
+        # Super-resolution button
+        self.super_res_button = QPushButton("Super-Resolution")
+        self.super_res_button.setToolTip("Open super-resolution window (requires 4 points)")
+        self.super_res_button.clicked.connect(self.open_super_resolution_window)
+        
         # Add to layout
         controls_layout.addWidget(h_label)
         controls_layout.addWidget(self.h_repetitions)
         controls_layout.addWidget(v_label)
         controls_layout.addWidget(self.v_repetitions)
         controls_layout.addWidget(self.rectify_button)
+        controls_layout.addWidget(self.super_res_button)
         controls_layout.addStretch()  # Push controls to the left
         
         layout.addWidget(controls_frame)
@@ -86,6 +96,24 @@ class MainWindow(QMainWindow):
         """Get current vertical repetitions value."""
         return self.v_repetitions.value()
     
+    def get_pil_image(self):
+        """Get the original image as a PIL Image."""
+        if self.image_viewer.original_image is not None:
+            original_image = self.image_viewer.original_image
+            width = original_image.width()
+            height = original_image.height()
+            
+            if original_image.format() == QImage.Format.Format_RGB888:
+                buffer = original_image.bits().asarray(width * height * 3)
+                return Image.frombytes("RGB", (width, height), np.asarray(buffer).tobytes())
+            
+            elif original_image.format() in [QImage.Format.Format_ARGB32, QImage.Format.Format_RGB32, QImage.Format.Format_RGBA8888]:
+                 buffer = original_image.bits().asarray(width * height * 4)
+                 pil_image = Image.frombytes("RGBA", (width, height), np.asarray(buffer).tobytes())
+                 return pil_image.convert("RGB") # Convert to RGB for consistency
+            
+        return None
+    
     def open_rectification_window(self):
         """Open the rectification window."""
         if self.rectification_window is None:
@@ -97,6 +125,15 @@ class MainWindow(QMainWindow):
         
         # Update the rectification if we have 4 points
         self.update_rectification()
+    
+    def open_super_resolution_window(self):
+        """Open the super-resolution window."""
+        if self.super_resolution_window is None:
+            self.super_resolution_window = SuperResolutionWindow(self)
+        
+        self.super_resolution_window.show()
+        self.super_resolution_window.raise_()
+        self.super_resolution_window.activateWindow()
     
     def update_grid(self):
         """Update the grid overlay in the image viewer."""
@@ -121,14 +158,8 @@ class MainWindow(QMainWindow):
             len(self.image_viewer.nodes) == 4):
             
             # Get the original image from the image viewer
-            original_image = self.image_viewer.original_image
-            if original_image is not None:
-                # Convert QImage to PIL Image for processing
-                width = original_image.width()
-                height = original_image.height()
-                buffer = original_image.bits().asarray(width * height * 3)
-                pil_image = Image.frombytes("RGB", (width, height), buffer)
-                
+            pil_image = self.get_pil_image()
+            if pil_image is not None:
                 # Get repetition values
                 h_reps = self.get_horizontal_repetitions()
                 v_reps = self.get_vertical_repetitions()
