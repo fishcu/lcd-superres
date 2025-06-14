@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 from PyQt6.QtWidgets import (QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, 
-                             QLabel, QPushButton, QSpinBox, QProgressBar)
+                             QLabel, QPushButton, QSpinBox, QProgressBar, QFileDialog)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QImage, QPixmap
 from PIL import Image
@@ -111,14 +111,14 @@ class SuperResolutionThread(QThread):
         self.status_update.emit("Done.")
         self.progress.emit(100)
         
-        final_image = (median_image * 255).clip(0, 255).astype(np.uint8)
-        self.finished.emit(final_image)
+        self.finished.emit(median_image)
 
 
 class SuperResolutionWindow(QMainWindow):
     def __init__(self, main_window):
         super().__init__(main_window)
         self.main_window = main_window
+        self.median_image = None
         self.setWindowTitle("Super-Resolution")
         self.setGeometry(300, 300, 800, 650)
         
@@ -138,6 +138,12 @@ class SuperResolutionWindow(QMainWindow):
         self.compute_button = QPushButton("Compute Super-Resolution")
         self.compute_button.clicked.connect(self.start_computation)
         controls_layout.addWidget(self.compute_button)
+
+        self.save_button = QPushButton("Save Image")
+        self.save_button.clicked.connect(self.save_image)
+        self.save_button.setEnabled(False)
+        controls_layout.addWidget(self.save_button)
+
         controls_layout.addStretch()
         layout.addLayout(controls_layout)
         
@@ -160,9 +166,11 @@ class SuperResolutionWindow(QMainWindow):
     def start_computation(self):
         # Disable button during computation
         self.compute_button.setEnabled(False)
+        self.save_button.setEnabled(False)
         self.progress_bar.setVisible(True)
         self.progress_bar.setValue(0)
         self.status_label.setText("Initializing...")
+        self.median_image = None
         
         # Get data from main window
         image_viewer = self.main_window.image_viewer
@@ -185,8 +193,11 @@ class SuperResolutionWindow(QMainWindow):
         self.thread.finished.connect(self.on_computation_finished)
         self.thread.start()
 
-    def on_computation_finished(self, result_image):
+    def on_computation_finished(self, median_image):
         """Display the result when computation is done."""
+        self.median_image = median_image
+        result_image = (self.median_image * 255).clip(0, 255).astype(np.uint8)
+
         height, width, channel = result_image.shape
         bytes_per_line = 3 * width
         q_image = QImage(result_image.data, width, height, bytes_per_line, QImage.Format.Format_RGB888)
@@ -200,6 +211,53 @@ class SuperResolutionWindow(QMainWindow):
         
         self.progress_bar.setVisible(False)
         self.compute_button.setEnabled(True)
+        self.save_button.setEnabled(True)
+
+    def save_image(self):
+        if self.median_image is None:
+            return
+
+        file_path, selected_filter = QFileDialog.getSaveFileName(
+            self,
+            "Save Super-Resolution Image",
+            "",
+            "PNG Image (*.png);;16-bit TIFF Image (*.tif *.tiff)"
+        )
+
+        if not file_path:
+            return
+
+        try:
+            # Determine the format from the selected filter or file extension
+            is_png = 'png' in selected_filter.lower()
+            is_tiff = 'tif' in selected_filter.lower()
+
+            if not is_png and not is_tiff:
+                if file_path.lower().endswith('.png'):
+                    is_png = True
+                elif file_path.lower().endswith(('.tif', '.tiff')):
+                    is_tiff = True
+                else: # Default to PNG
+                    if '.' not in file_path:
+                        file_path += '.png'
+                    is_png = True
+
+            if is_png:
+                # Save as 8-bit PNG
+                uint8_image = (self.median_image * 255).clip(0, 255).astype(np.uint8)
+                pil_img = Image.fromarray(uint8_image, 'RGB')
+                pil_img.save(file_path)
+            elif is_tiff:
+                # Save as 16-bit TIFF using OpenCV
+                uint16_image = (self.median_image * 65535).clip(0, 65535).astype(np.uint16)
+                # cv2.imwrite expects BGR format, so we convert from RGB
+                bgr_image = cv2.cvtColor(uint16_image, cv2.COLOR_RGB2BGR)
+                cv2.imwrite(file_path, bgr_image)
+
+            self.status_label.setText(f"Image saved to {file_path}")
+
+        except Exception as e:
+            self.status_label.setText(f"Error saving image: {e}")
 
     def closeEvent(self, event):
         """Ensure thread is stopped on window close."""
