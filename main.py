@@ -130,7 +130,7 @@ class SuperResolutionThread(QThread):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("High-Performance Image Viewer")
+        self.setWindowTitle("Grid repetition super-resolution")
         self.setGeometry(100, 100, 1400, 900)
 
         central_widget = QWidget()
