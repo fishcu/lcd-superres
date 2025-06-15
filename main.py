@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import sys
+import argparse
 import numpy as np
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout,
                              QWidget, QLabel, QSpinBox, QFrame, QPushButton, QDoubleSpinBox,
@@ -128,7 +129,7 @@ class SuperResolutionThread(QThread):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, image_path="test.tif"):
         super().__init__()
         self.setWindowTitle("Grid repetition super-resolution")
         self.setGeometry(100, 100, 1400, 900)
@@ -334,7 +335,7 @@ class MainWindow(QMainWindow):
         self.image_viewer = HighPerformanceImageView()
         main_layout.addWidget(self.image_viewer)
 
-        self.image_viewer.set_image("test.tif")
+        self.image_viewer.set_image(image_path)
 
         # Initialize super-resolution variables
         self.median_image = None
@@ -693,8 +694,14 @@ class MainWindow(QMainWindow):
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Grid repetition super-resolution tool")
+    parser.add_argument("image_path", nargs="?", default="test.tif", 
+                       help="Path to the input image file (default: test.tif)")
+    
+    args = parser.parse_args()
+    
     app = QApplication(sys.argv)
-    window = MainWindow()
+    window = MainWindow(args.image_path)
     window.show()
     sys.exit(app.exec())
 
