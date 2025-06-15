@@ -4,6 +4,7 @@ from scipy.optimize import minimize, Bounds
 from scipy.ndimage import map_coordinates, gaussian_filter
 import cv2
 
+
 class RefineCornersThread(QThread):
     """
     Worker thread for refining the four corner points of a quadrilateral.
@@ -18,15 +19,17 @@ class RefineCornersThread(QThread):
 
     def __init__(self, pil_image, initial_corners, h_reps, v_reps, sigma, parent=None):
         super().__init__(parent)
-        image_gray = np.array(pil_image.convert('L')).astype(np.float32) / 255.0
-        
+        image_gray = np.array(pil_image.convert(
+            'L')).astype(np.float32) / 255.0
+
         # Pre-blur the image to create smoother valleys for the optimizer
         self.image_blurred = gaussian_filter(image_gray, sigma=sigma)
-        
-        self.initial_corners = np.array([[p.x(), p.y()] for p in initial_corners], dtype=np.float32)
+
+        self.initial_corners = np.array(
+            [[p.x(), p.y()] for p in initial_corners], dtype=np.float32)
         self.h_reps = h_reps
         self.v_reps = v_reps
-        self.samples_per_line = 30 # Number of samples to take along each grid line
+        self.samples_per_line = 30  # Number of samples to take along each grid line
 
     def calculate_darkness_score(self, flat_corners):
         """
@@ -59,28 +62,31 @@ class RefineCornersThread(QThread):
         for start, end in all_lines:
             x_points = np.linspace(start[0], end[0], self.samples_per_line)
             y_points = np.linspace(start[1], end[1], self.samples_per_line)
-            all_sample_points.append(np.vstack([y_points, x_points])) # map_coordinates expects (row, col)
+            # map_coordinates expects (row, col)
+            all_sample_points.append(np.vstack([y_points, x_points]))
 
         if not all_sample_points:
             return 0
 
         coords = np.hstack(all_sample_points)
-        
+
         # Sample the brightness values from the pre-blurred image
-        brightness_values = map_coordinates(self.image_blurred, coords, order=1, mode='nearest')
-        
+        brightness_values = map_coordinates(
+            self.image_blurred, coords, order=1, mode='nearest')
+
         score = np.sum(brightness_values)
-        
+
         return score
 
     def run(self):
         """Execute the corner refinement optimization."""
         self.progress.emit("Starting refinement...")
-        
+
         initial_guess = self.initial_corners.flatten()
-        
+
         pixel_bounds = 5
-        bounds = Bounds(initial_guess - pixel_bounds, initial_guess + pixel_bounds)
+        bounds = Bounds(initial_guess - pixel_bounds,
+                        initial_guess + pixel_bounds)
 
         result = minimize(
             self.calculate_darkness_score,
@@ -89,11 +95,11 @@ class RefineCornersThread(QThread):
             bounds=bounds,
             options={'disp': False, 'ftol': 1e-4, 'xtol': 1e-5}
         )
-        
+
         if result.success:
             optimized_corners = result.x.reshape(4, 2)
             self.progress.emit("Refinement successful.")
             self.finished.emit(optimized_corners)
         else:
             self.progress.emit(f"Refinement failed: {result.message}")
-            self.finished.emit(self.initial_corners) 
+            self.finished.emit(self.initial_corners)
